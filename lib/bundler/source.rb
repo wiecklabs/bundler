@@ -210,6 +210,9 @@ module Bundler
 
     def gems
       @gems ||= begin
+        # Generate any gemspecs
+        generate_gemspecs
+
         # Locate all gemspecs from the directory
         specs = locate_gemspecs
         specs = merge_defined_specs(specs)
@@ -225,8 +228,19 @@ module Bundler
       end
     end
 
+    def generate_gemspecs
+      Dir["#{location}/**/Rakefile"].each do |rakefile|
+        Dir.chdir(File.dirname(rakefile)) do
+          unless (gemspec_task = `rake -sT gemspec`.chomp).empty?
+            task = gemspec_task.split("#", 2)[0]
+            `#{task} -s`
+          end
+        end
+      end
+    end
+
     def locate_gemspecs
-      Dir["#{location}/#{@glob}"].inject({}) do |specs, file|
+      Dir.glob("#{location}/#{@glob}", File::FNM_DOTMATCH).inject({}) do |specs, file|
         file = Pathname.new(file)
         if spec = eval(File.read(file)) # and validate_gemspec(file.dirname, spec)
           spec.location = file.dirname.expand_path
@@ -313,7 +327,7 @@ module Bundler
 
     def location
       # TMP HAX to get the *.gemspec reading to work
-      bundle.gem_path.join('dirs', File.basename(@uri, '.git'))
+      bundle.gem_path.join('dirs', File.basename(@uri, '.git').gsub(/\W+/, "_"))
     end
 
     def gems
